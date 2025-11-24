@@ -160,6 +160,109 @@ print("Parquet converted to Delta!")
 delta_df = spark.read.format("delta").load(parquet_path)
 display(delta_df)
 ```
+Approach 1: Separate by Mount Points (Recommended)
+
+DBFS Root
+├── /mnt/dev/                    ← Development environment
+│   ├── /mnt/dev/delta/          ← Dev Delta tables
+│   ├── /mnt/dev/source/         ← Dev source data
+│   └── /mnt/dev/checkpoints/    ← Dev checkpoints
+│
+├── /mnt/qa/                     ← QA/Testing environment
+│   ├── /mnt/qa/delta/           ← QA Delta tables
+│   ├── /mnt/qa/source/          ← QA source data
+│   └── /mnt/qa/checkpoints/     ← QA checkpoints
+│
+└── /mnt/prod/                   ← Production environment
+    ├── /mnt/prod/delta/         ← Prod Delta tables
+    ├── /mnt/prod/source/        ← Prod source data
+    └── /mnt/prod/checkpoints/   ← Prod checkpoints
+
+
+Azure Data Lake (or S3)
+├── dev-container/               ← Mounted as /mnt/dev/
+├── qa-container/                ← Mounted as /mnt/qa/
+└── prod-container/              ← Mounted as /mnt/prod/
+
+Unity Catalog Structure:
+├── dev_catalog
+│   ├── bronze_schema
+│   │   └── raw_customers (table)
+│   ├── silver_schema
+│   │   └── cleaned_customers (table)
+│   └── gold_schema
+│       └── customer_metrics (table)
+│
+├── qa_catalog
+│   ├── bronze_schema
+│   ├── silver_schema
+│   └── gold_schema
+│
+└── prod_catalog
+    ├── bronze_schema
+    ├── silver_schema
+    └── gold_schema
+
+======================================================================
+
+FIle Store behaviour
+
+FileStore is WORKSPACE-SPECIFIC, not environment-specific
+Each Databricks workspace has its own FileStore
+NOT shared between workspaces (dev/qa/prod workspaces = separate FileStores)
+
+
+
+Dev Workspace:
+└── /FileStore/
+    ├── jars/my-library.jar
+    ├── scripts/init.sh
+    └── uploads/config.json
+
+QA Workspace:
+└── /FileStore/
+    ├── jars/my-library.jar      ← Separate copy
+    ├── scripts/init.sh          ← Separate copy
+    └── uploads/config.json      ← Separate copy
+
+Prod Workspace:
+└── /FileStore/
+    ├── jars/my-library.jar      ← Separate copy
+    ├── scripts/init.sh          ← Separate copy
+    └── uploads/config.json      ← Separate copy
+
+
+Implication: You need to manually upload/sync files to each workspace's FileStore separately.
+
+==================================================================
+
+
+Key Characteristics:
+tmp is CLUSTER-SPECIFIC, not workspace or environment-specific
+Each cluster has its own ephemeral tmp directory
+Deleted when cluster terminates
+Different clusters in the same workspace have different tmp directories
+
+
+
+Dev Workspace:
+├── Cluster-1: /tmp/ (ephemeral)
+├── Cluster-2: /tmp/ (ephemeral, different from Cluster-1)
+└── Cluster-3: /tmp/ (ephemeral, different from Cluster-1 & 2)
+
+QA Workspace:
+├── Cluster-1: /tmp/ (ephemeral)
+└── Cluster-2: /tmp/ (ephemeral)
+
+Prod Workspace:
+├── Cluster-1: /tmp/ (ephemeral)
+├── Cluster-2: /tmp/ (ephemeral)
+└── Cluster-3: /tmp/ (ephemeral)
+
+
+
+
+
 
 ### Method 4: Managed Table
 ```python
@@ -521,6 +624,20 @@ deltaTable.optimize().executeZOrderBy("region", "registration_date")
 spark.sql("OPTIMIZE customers")
 spark.sql("OPTIMIZE customers ZORDER BY (region, registration_date)")
 ```
+===================================
+
+Approach 2: Unity Catalog (Production Best Practice) ✅
+# ✅ Catalog-governed
+df.write.format("delta").saveAsTable("prod_catalog.analytics.customers")
+df_read = spark.read.table("prod_catalog.analytics.customers")
+
+# Benefits:
+# - ✅ Permission enforcement (who can read/write)
+# - ✅ Audit logging (who accessed when)
+# - ✅ Data lineage tracking
+# - ✅ Centralized discovery
+
+
 
 ### VACUUM Command
 ```python
