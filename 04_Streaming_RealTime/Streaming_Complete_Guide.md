@@ -52,7 +52,8 @@ from pyspark.sql.functions import col, current_timestamp
 file_path = "/databricks-datasets/structured-streaming/events"
 checkpoint_path = "/tmp/autoloader/_checkpoint"
 
-# Read streaming data with Auto Loader
+# Read streaming data with Auto Loader 
+#cloudFiles (Auto Loader) uses a notification system (like Azure Event Grid) or an incremental listing method to instantly find new files without scanning the whole directory.
 raw_df = (spark.readStream
     .format("cloudFiles")
     .option("cloudFiles.format", "json")
